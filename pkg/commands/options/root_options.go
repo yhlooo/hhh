@@ -24,6 +24,6 @@ type Options struct {
 
 // AddFlags 将选项绑定到命令行参数
 func (opts *Options) AddFlags(fs *pflag.FlagSet) {
-	fs.StringVarP(&opts.Format, "format", "f", opts.Format, "Output format. One of: (markdown, raw)")
+	fs.StringVarP(&opts.Format, "format", "f", opts.Format, "Output format. One of: (markdown, html)")
 	fs.StringVarP(&opts.Output, "output", "o", opts.Output, "Write to file instead of stdout")
 }

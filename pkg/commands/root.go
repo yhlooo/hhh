@@ -2,14 +2,19 @@ package commands
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 
 	"github.com/bombsimon/logrusr/v4"
 	"github.com/go-logr/logr"
+	"github.com/go-shiori/go-readability"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
+	"github.com/yhlooo/hhh/pkg/articlewriters"
 	"github.com/yhlooo/hhh/pkg/commands/options"
+	"github.com/yhlooo/hhh/pkg/htmlgetters"
 )
 
 // NewCommand 创建命令
@@ -44,7 +49,64 @@ in human-readable format (e.g. Markdown).
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmd.Help()
+			ctx := cmd.Context()
+			logger := logr.FromContextOrDiscard(ctx)
+
+			targets := args
+			if len(targets) == 0 {
+				targets = []string{""}
+			}
+
+			// 准备输出
+			w := os.Stdout
+			if opts.Output != "" {
+				var err error
+				w, err = os.OpenFile(opts.Output, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+				if err != nil {
+					return fmt.Errorf("open %q error: %w", opts.Output, err)
+				}
+			}
+			defer func() { _ = w.Close() }()
+			var articleWriter articlewriters.Writer
+			switch opts.Format {
+			case "markdown":
+				articleWriter = articlewriters.NewMarkdown(w)
+			default:
+				articleWriter = articlewriters.NewHTML(w)
+			}
+
+			var errs []error
+			for _, target := range targets {
+				// 获取 HTML
+				r, parsedURL, err := htmlgetters.Get(ctx, target)
+				if err != nil {
+					logger.Error(err, fmt.Sprintf("get %q error", target))
+					errs = append(errs, fmt.Errorf("get %q error: %w", target, err))
+					continue
+				}
+
+				// 降噪
+				article, err := readability.FromReader(r, parsedURL)
+				if err != nil {
+					logger.Error(err, fmt.Sprintf("make %q readable error", target))
+					errs = append(errs, fmt.Errorf("make %q readable error: %w", target, err))
+					continue
+				}
+				_ = r.Close()
+
+				// 输出
+				if err := articleWriter.Write(article); err != nil {
+					logger.Error(err, fmt.Sprintf("write %q to output error", target))
+					errs = append(errs, fmt.Errorf("write %q to output error: %w", target, err))
+					continue
+				}
+			}
+
+			if len(errs) > 0 {
+				return errors.Join(errs...)
+			}
+
+			return nil
 		},
 	}
 
