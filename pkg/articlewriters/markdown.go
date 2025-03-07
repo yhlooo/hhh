@@ -72,7 +72,7 @@ func (w *markdownWriter) writeNode(node *html.Node, opts *NodeOptions) error {
 
 	switch node.Type {
 	case html.TextNode:
-		return w.writeString(node.Data, opts.Indent)
+		return w.writeString(strings.TrimSpace(node.Data), opts.Indent)
 	case html.ElementNode:
 		switch node.DataAtom {
 		case atom.H1:
@@ -162,6 +162,11 @@ func (w *markdownWriter) writeString(text, indent string) error {
 	return nil
 }
 
+// writeA 写超链接节点
+func (w *markdownWriter) writeA(node *html.Node) error {
+
+}
+
 // writeImage 写图像节点
 func (w *markdownWriter) writeImage(node *html.Node) error {
 	src := ""
@@ -182,4 +187,74 @@ func (w *markdownWriter) writeImage(node *html.Node) error {
 	}
 
 	return w.writeString(fmt.Sprintf("![%s](%s)%s", alt, src, paragraphSeparator), "")
+}
+
+// getNodeMDContent 获取节点 Markdown 内容
+func getNodeMDContent(node *html.Node) string {
+	switch node.Type {
+	case html.TextNode:
+		return strings.TrimSpace(node.Data)
+	case html.ElementNode:
+		switch node.DataAtom {
+		case atom.H1:
+			return "# " + getNodeChildrenMDContent(node)
+		case atom.H2:
+			return "## " + getNodeChildrenMDContent(node)
+		case atom.H3:
+			return "### " + getNodeChildrenMDContent(node)
+		case atom.H4:
+			return "#### " + getNodeChildrenMDContent(node)
+		case atom.H5:
+			return "##### " + getNodeChildrenMDContent(node)
+		case atom.H6:
+			return "###### " + getNodeChildrenMDContent(node)
+		case atom.Figcaption:
+			return w.writeChildren(node, "> ", paragraphSeparator, opts.AppendIndent("> "))
+		case atom.Ol:
+			return w.writeChildren(node, "", paragraphSeparator, opts.WithOrderedListSeq(1))
+		case atom.Li:
+			var err error
+			if opts.OrderedListSeq == 0 {
+				// 无序列表
+				err = w.writeChildren(node, "- ", paragraphSeparator, opts.AppendIndent("  "))
+			} else {
+				// 有序列表
+				err = w.writeChildren(
+					node,
+					strconv.Itoa(opts.OrderedListSeq)+". ",
+					paragraphSeparator,
+					opts.AppendIndent("   "),
+				)
+				opts.OrderedListSeq++
+			}
+			if err != nil {
+				return err
+			}
+		case atom.B:
+			return w.writeChildren(node, " **", "** ", opts)
+		case atom.A:
+			href := ""
+			for _, attr := range node.Attr {
+				switch attr.Key {
+				case "href":
+					href = attr.Val
+				}
+			}
+			return w.writeChildren(node, " [", fmt.Sprintf("](%s) ", href), opts)
+		case atom.Img, atom.Image:
+			return w.writeImage(node)
+		default:
+			return w.writeChildren(node, "", paragraphSeparator, opts)
+		}
+	default:
+	}
+}
+
+// getNodeChildrenMDContent 获取子节点 Markdown 内容
+func getNodeChildrenMDContent(node *html.Node) string {
+	var ret []string
+	for child := range node.ChildNodes() {
+		ret = append(ret, getNodeMDContent(child))
+	}
+	return strings.TrimSpace(strings.Join(ret, " "))
 }
